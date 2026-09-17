@@ -1,0 +1,151 @@
+{
+  "name": "generated-diffs",
+  "displayName": "Generated Diffs",
+  "description": "Check out a branch, review changes against main, and edit with automatic saving.",
+  "version": "0.1.0",
+  "publisher": "evelynchan-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "activationEvents": [
+    "onView:generatedDiffs"
+  ],
+  "main": "./out/src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Checking out branches and saving files requires a trusted workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "npm run compile && node --test out/test/core.test.js",
+    "test:integration": "npm run compile && node test/run-integration.cjs",
+    "package": "vsce package --no-dependencies --allow-missing-repository",
+    "vscode:prepublish": "npm run compile"
+  },
+  "contributes": {
+    "views": {
+      "scm": [
+        {
+          "id": "generatedDiffs",
+          "name": "Generated Diffs",
+          "icon": "$(diff)",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "generatedDiffs.chooseProject",
+        "title": "Choose Project",
+        "category": "Generated Diffs",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "generatedDiffs.chooseBranch",
+        "title": "Check Out Branch",
+        "category": "Generated Diffs",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "generatedDiffs.chooseBase",
+        "title": "Choose Comparison Base",
+        "category": "Generated Diffs"
+      },
+      {
+        "command": "generatedDiffs.refresh",
+        "title": "Refresh",
+        "category": "Generated Diffs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "generatedDiffs.openAll",
+        "title": "Open All Changes",
+        "category": "Generated Diffs",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "generatedDiffs.toggleLocal",
+        "title": "Toggle Local Edits",
+        "category": "Generated Diffs"
+      },
+      {
+        "command": "generatedDiffs.toggleAutoSave",
+        "title": "Toggle Review Auto Save",
+        "category": "Generated Diffs"
+      },
+      {
+        "command": "generatedDiffs.retrySave",
+        "title": "Retry Review Saves",
+        "category": "Generated Diffs"
+      },
+      {
+        "command": "generatedDiffs.openFile",
+        "title": "Open Diff",
+        "category": "Generated Diffs"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "generatedDiffs.chooseProject",
+          "when": "view == generatedDiffs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "generatedDiffs.chooseBranch",
+          "when": "view == generatedDiffs",
+          "group": "navigation@2"
+        },
+        {
+          "command": "generatedDiffs.openAll",
+          "when": "view == generatedDiffs",
+          "group": "navigation@3"
+        },
+        {
+          "command": "generatedDiffs.refresh",
+          "when": "view == generatedDiffs",
+          "group": "navigation@4"
+        },
+        {
+          "command": "generatedDiffs.chooseBase",
+          "when": "view == generatedDiffs"
+        },
+        {
+          "command": "generatedDiffs.toggleLocal",
+          "when": "view == generatedDiffs"
+        },
+        {
+          "command": "generatedDiffs.toggleAutoSave",
+          "when": "view == generatedDiffs"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "generatedDiffs.openFile",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.138.0",
+    "@vscode/vsce": "4.0.0",
+    "typescript": "7.0.2"
+  }
+}

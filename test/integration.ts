@@ -1,0 +1,122 @@
+import * as vscode from 'vscode';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import type { Review } from '../src/extension';
+import type { GitExtension } from '../src/vscode-git';
+
+async function eventually(check: () => boolean | Promise<boolean>, message: string): Promise<void> {
+  const until = Date.now() + 15000;
+  while (!await check()) { if (Date.now() > until) { throw new Error(message); } await delay(100); }
+}
+export async function run(): Promise<void> {
+  const root = process.env.GENERATED_DIFFS_TEST_ROOT!;
+  const repoRoot = path.join(root, 'project');
+  const git = (...args: string[]): string => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const gitExtension = await vscode.extensions.getExtension<GitExtension>('vscode.git')!.activate();
+  const api = gitExtension.getAPI(1);
+  const repo = await api.openRepository(vscode.Uri.file(repoRoot));
+  assert.ok(repo);
+  await repo.status();
+  const extension = vscode.extensions.getExtension<{ review: Review }>('evelynchan-local.generated-diffs');
+  assert.ok(extension, 'Packaged extension is installed');
+  const { review } = await extension.activate();
+  await eventually(() => !review.message && !!review.comparison, 'Initial branch comparison did not load');
+  assert.equal(review.comparison!.head.name, 'feature/review');
+  assert.deepEqual(review.comparison!.changes.map(change => change.kind).sort(), ['Deleted', 'Modified', 'Renamed']);
+  const main = git('rev-parse', 'main');
+  const index = git('write-tree');
+  await vscode.commands.executeCommand('workbench.view.scm');
+  const change = review.comparison!.changes.find(change => change.path === 'example.ts')!;
+  await review.openFile(change);
+  const tab = vscode.window.tabGroups.activeTabGroup.activeTab!;
+  assert.ok(tab.input instanceof vscode.TabInputTextDiff, 'Opened the native diff editor');
+  assert.equal(tab.input.original.scheme, 'generated-diffs');
+  assert.equal(tab.input.modified.scheme, 'file', 'Modified side is the actual working file');
+  const original = await vscode.workspace.openTextDocument(tab.input.original);
+  assert.equal(original.getText(), 'export const greeting = "Hello";\n');
+  const doc = await vscode.workspace.openTextDocument(tab.input.modified);
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(doc.uri, new vscode.Range(0, 0, doc.lineCount, 0), 'export const greeting = "Edited inside the diff";\n');
+  assert.equal(await vscode.workspace.applyEdit(edit), true);
+  await eventually(async () => !doc.isDirty && (await readFile(doc.uri.fsPath, 'utf8')).includes('Edited inside the diff'), 'Review auto-save did not write the edited file');
+  assert.equal(git('rev-parse', 'main'), main);
+  assert.equal(git('write-tree'), index, 'Auto-save did not stage anything');
+  assert.match(git('status', '--porcelain'), /M example\.ts/);
+  assert.equal(review.status.text.includes('Saved'), true);
+  console.log('PASS: packaged extension, native editable diff, automatic save, main/index preserved');
+
+  // Dirty branch checkout is blocked without changing HEAD or discarding work.
+  const other = (await review.git!.branches()).find(branch => branch.name === 'feature/other')!;
+  const blocked = review.checkout(other);
+  await delay(250);
+  await vscode.commands.executeCommand('notifications.clearAll');
+  await blocked;
+  assert.equal(git('branch', '--show-current'), 'feature/review');
+  console.log('PASS: uncommitted changes block checkout');
+  git('add', 'example.ts'); git('commit', '-m', 'Save reviewed edits');
+  await repo.status(); await delay(300);
+  await review.checkout(other);
+  assert.equal(git('branch', '--show-current'), 'feature/other');
+  await eventually(() => review.comparison?.head.name === 'feature/other', 'Checkout did not update review');
+  await review.openAll();
+  await eventually(() => vscode.window.tabGroups.all.some(group => group.tabs.some(tab => tab.label.startsWith('Generated Diffs · '))), 'Multi-file diff did not open');
+  const multiDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(repoRoot, 'example.ts')));
+  const multiEdit = new vscode.WorkspaceEdit(); multiEdit.insert(multiDoc.uri, new vscode.Position(0, 0), '// Multi-file review edit\n');
+  await vscode.workspace.applyEdit(multiEdit);
+  await eventually(async () => !multiDoc.isDirty && (await readFile(multiDoc.uri.fsPath, 'utf8')).startsWith('// Multi-file'), 'Multi-file review edit did not auto-save');
+  console.log('PASS: clean checkout and editable multi-file review');
+
+  git('add', '.'); git('commit', '-m', 'Multi-file edit'); await repo.status(); await delay(300);
+  await review.toggleLocal();
+  assert.equal(review.includeLocal, false);
+  const committedChange = review.comparison!.changes.find(change => change.path === 'example.ts')!;
+  await review.openFile(committedChange);
+  const committedTab = vscode.window.tabGroups.activeTabGroup.activeTab!;
+  assert.ok(committedTab.input instanceof vscode.TabInputTextDiff);
+  assert.equal(committedTab.input.modified.scheme, 'generated-diffs');
+  console.log('PASS: committed-only review uses read-only snapshots');
+
+  await review.toggleLocal();
+  const secondRoot = path.join(root, 'second-project'); await mkdir(secondRoot);
+  const secondGit = (...args: string[]) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { cwd: secondRoot, stdio: 'pipe' });
+  secondGit('init', '-b', 'main'); secondGit('config', 'user.name', 'Test'); secondGit('config', 'user.email', 'test@example.invalid');
+  await writeFile(path.join(secondRoot, 'file.txt'), 'second'); secondGit('add', '.'); secondGit('commit', '-m', 'main');
+  const second = await api.openRepository(vscode.Uri.file(secondRoot)); assert.ok(second);
+  await second.status(); await review.selectRepository(second);
+  assert.equal(review.git!.root, secondRoot); assert.equal(review.comparison?.changes.length, 0);
+  await review.selectRepository(repo);
+  console.log('PASS: project selection keeps repository context separate');
+  git('remote', 'add', 'origin', repoRoot);
+  git('update-ref', 'refs/remotes/origin/remote-review', 'HEAD');
+  const remote = (await review.git!.branches()).find(branch => branch.name === 'origin/remote-review')!;
+  await review.checkout(remote);
+  assert.equal(git('branch', '--show-current'), 'remote-review');
+  assert.equal(git('rev-parse', '--abbrev-ref', '@{upstream}'), 'origin/remote-review');
+  git('update-ref', 'refs/remotes/origin/feature/review', 'HEAD');
+  const conflicting = (await review.git!.branches()).find(branch => branch.name === 'origin/feature/review')!;
+  await assert.rejects(review.checkout(conflicting), /different upstream/);
+  assert.equal(git('branch', '--show-current'), 'remote-review');
+  console.log('PASS: remote selection creates a tracking branch and preserves existing local branches');
+
+  const worktreeRoot = path.join(root, 'worktree');
+  git('worktree', 'add', '-b', 'feature/worktree', worktreeRoot);
+  const worktreeRepo = await api.openRepository(vscode.Uri.file(worktreeRoot)); assert.ok(worktreeRepo);
+  await worktreeRepo.status(); await review.selectRepository(worktreeRepo);
+  await eventually(() => review.comparison?.head.name === 'feature/worktree', 'Worktree comparison did not load');
+  const worktreeChange = review.comparison!.changes.find(change => change.path === 'example.ts')!;
+  await review.openFile(worktreeChange);
+  const worktreeTab = vscode.window.tabGroups.activeTabGroup.activeTab!;
+  assert.ok(worktreeTab.input instanceof vscode.TabInputTextDiff);
+  assert.equal(worktreeTab.input.modified.fsPath, path.join(worktreeRoot, 'example.ts'));
+  const worktreeDoc = await vscode.workspace.openTextDocument(worktreeTab.input.modified);
+  const worktreeEdit = new vscode.WorkspaceEdit(); worktreeEdit.insert(worktreeDoc.uri, new vscode.Position(0, 0), '// Worktree edit\n');
+  await vscode.workspace.applyEdit(worktreeEdit);
+  await eventually(async () => !worktreeDoc.isDirty && (await readFile(worktreeDoc.uri.fsPath, 'utf8')).startsWith('// Worktree'), 'Worktree edit did not auto-save');
+  assert.ok(!(await readFile(path.join(repoRoot, 'example.ts'), 'utf8')).startsWith('// Worktree'));
+  console.log('PASS: editing a worktree saves only into that worktree');
+  await writeFile(path.join(root, 'result.json'), JSON.stringify({ passed: true }));
+  console.log('Generated Diffs integration checks passed.');
+}
