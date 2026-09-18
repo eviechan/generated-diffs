@@ -4,7 +4,15 @@
   "description": "Check out a branch, review changes against main, and edit with automatic saving.",
   "version": "0.1.0",
   "publisher": "evelynchan-local",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eviechan/generated-diffs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eviechan/generated-diffs/issues"
+  },
+  "homepage": "https://github.com/eviechan/generated-diffs#readme",
   "engines": {
     "vscode": "^1.138.0"
   },

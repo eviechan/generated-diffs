@@ -1,39 +1,54 @@
 # Generated Diffs
 
-A local VS Code extension for choosing a project and branch, reviewing its changes against main, and editing directly in the diff with automatic saving.
+A VS Code extension for checking out a branch, reviewing everything it changes from `main`, and editing directly in the native diff editor. The review includes committed, staged, unstaged, untracked, and open-editor changes.
 
-## Use
+## Usage
 
-1. In VS Code, run **Extensions: Install from VSIX…** and select `generated-diffs-0.1.0.vsix`.
-2. Open a trusted Git project, then open **Source Control → Generated Diffs**.
-3. Click **Project** to choose an open repository or worktree. Click **Branch** to search branches and check one out.
-4. Select a changed file, or use **Open All Changes**. Edit the right side. After about one second without typing, the change saves to the real file.
+1. Open a trusted Git project in VS Code.
+2. Open **Source Control → Generated Diffs**.
+3. Choose **Project**, then use **Branch** to search for and check out the branch to review.
+4. Select a changed file, or choose **Open All Changes**. Edit the right side of a diff; the extension saves the working file after about one second without typing.
 
-**Main (branch point)** on the left is read-only. The comparison starts at the common ancestor with local `main`, falling back to local `origin/main`. It includes committed work, saved changes, untracked files, and unsaved editor text. The base dropdown supports a different parent branch. Remote refs are used as they exist locally; the extension does not fetch automatically.
+The left side, **Main (branch point)**, is read-only. The default base is the branch's common ancestor with local `main`, falling back to `origin/main`. The **Base branch** control can override that choice.
 
-The status bar shows saving, saved, or a retryable error. The **Auto-save** row controls saving for files opened in this review; it does not change VS Code's global Auto Save setting. Existing VS Code Auto Save remains independent. **Committed only** switches to read-only snapshots of both versions.
+**Committed only** opens read-only snapshots of both versions. **Auto-save** affects only files opened by Generated Diffs and does not alter VS Code's global Auto Save setting.
 
-Saves are ordinary, uncommitted working-file edits. Nothing is staged, committed, pushed, or sent to a server. Branch checkout requires a clean project so existing changes cannot silently move to another branch. Commit or stash through normal Source Control first. A branch open in another worktree offers to open that worktree.
+## Installation
 
-## Boundaries
+Build and install a local VSIX:
 
-- Requires VS Code 1.138 or later, the built-in Git extension, and local Git. Browser-only and untrusted workspaces are unsupported.
-- Binary files, symbolic links, submodule pointers, conflicts, and files over 2 MB display a summary. Deleted files have an empty read-only side.
-- Unsaved files must have a path inside the selected repository. Ignored untracked files and untitled buffers are excluded.
-- The extension serializes its own saves and checkouts, and checks the current branch before saving. An external Git process is not controlled by the extension: stop editing while switching branches outside it. VS Code's normal disk-conflict handling still applies.
-- Selecting a remote branch creates a local tracking branch when needed. An existing local branch with a different upstream must be selected explicitly.
+```sh
+npm ci --ignore-scripts
+npm run package
+code --install-extension generated-diffs-0.1.0.vsix
+```
 
-## Develop
+Reload VS Code after installation. The extension requires VS Code 1.138 or later, the built-in Git extension, and local Git.
+
+## How comparisons work
+
+- The default comparison includes committed work and your current local edits.
+- Selecting a remote-only branch creates a local tracking branch when needed.
+- A branch already open in another worktree can be opened in that worktree instead.
+- Checkout requires a clean project so local edits cannot be moved to another branch unexpectedly.
+- Generated Diffs never stages, commits, pushes, fetches, or sends source code to a server.
+
+## Limits
+
+Binary files, symbolic links, submodule pointers, conflicts, and files over 2 MB show a summary. Deleted files have an empty read-only side. Ignored untracked files and untitled buffers are excluded.
+
+External Git commands are outside the extension's control. Stop editing while switching branches outside VS Code; ordinary VS Code disk-conflict handling still applies.
+
+## Development
 
 ```sh
 npm ci --ignore-scripts
 npm test
 npm run package
-npm run test:integration
 ```
 
-Press F5 to open an Extension Development Host. Tests use Node's built-in runner and temporary Git repositories. Integration tests install the packaged VSIX into an isolated VS Code profile and exercise the real editor, automatic saving, branch checkout, and multi-file diffs. Set `VSCODE_EXECUTABLE` if VS Code is installed elsewhere. On macOS the runner deliberately uses the Visual Studio Code application rather than a `code` alias that might point to Cursor.
+Press `F5` to start an Extension Development Host. `npm run test:integration` installs the packaged VSIX into an isolated VS Code profile and exercises the editor flow. Set `VSCODE_EXECUTABLE` when VS Code is installed outside the usual macOS location.
 
-No runtime dependencies. VS Code's Git API handles discovery and checkout; a small read-only Git adapter provides NUL-delimited change metadata (including type changes), reliable untracked-file discovery, and worktree information independently of Source Control display settings. All Git arguments are passed directly without a shell.
+## License
 
-This repository is local only and has no remote. The vendored Git API type declarations retain Microsoft's MIT license header.
+[MIT](LICENSE). The bundled Git API declarations retain their original Microsoft MIT license header.
